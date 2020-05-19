@@ -3,11 +3,15 @@
  * http://www.apache.org/licenses/LICENSE-2.0 */
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Xml.Linq;
 
 namespace TiledSharp
 {
+    // TODO: The design here is all wrong. A Tileset should be a list of tiles,
+    //       it shouldn't force the user to do so much tile ID management
+
     public class TmxTileset : TmxDocument, ITmxElement
     {
         public int FirstGid {get; private set;}
@@ -16,22 +20,24 @@ namespace TiledSharp
         public int TileHeight {get; private set;}
         public int Spacing {get; private set;}
         public int Margin {get; private set;}
+        public int? Columns {get; private set;}
+        public int? TileCount {get; private set;}
 
+        public Dictionary<int, TmxTilesetTile> Tiles {get; private set;}
         public TmxTileOffset TileOffset {get; private set;}
+        public PropertyDict Properties {get; private set;}
         public TmxImage Image {get; private set;}
         public TmxList<TmxTerrain> Terrains {get; private set;}
-        public List<TmxTilesetTile> Tiles {get; private set;}
-        public PropertyDict Properties {get; private set;}
 
         // TSX file constructor
-        public TmxTileset(XDocument xDoc, string tmxDir) :
+        public TmxTileset(XContainer xDoc, string tmxDir) :
             this(xDoc.Element("tileset"), tmxDir) { }
 
         // TMX tileset element constructor
         public TmxTileset(XElement xTileset, string tmxDir = "")
         {
             var xFirstGid = xTileset.Attribute("firstgid");
-            var source = (string)xTileset.Attribute("source");
+            var source = (string) xTileset.Attribute("source");
 
             if (source != null)
             {
@@ -39,17 +45,18 @@ namespace TiledSharp
                 source = Path.Combine(tmxDir, source);
 
                 // source is always preceded by firstgid
-                FirstGid = (int)xFirstGid;
+                FirstGid = (int) xFirstGid;
 
                 // Everything else is in the TSX file
                 var xDocTileset = ReadXml(source);
                 var ts = new TmxTileset(xDocTileset, TmxDirectory);
-
                 Name = ts.Name;
                 TileWidth = ts.TileWidth;
                 TileHeight = ts.TileHeight;
                 Spacing = ts.Spacing;
                 Margin = ts.Margin;
+                Columns = ts.Columns;
+                TileCount = ts.TileCount;
                 TileOffset = ts.TileOffset;
                 Image = ts.Image;
                 Terrains = ts.Terrains;
@@ -60,14 +67,15 @@ namespace TiledSharp
             {
                 // firstgid is always in TMX, but not TSX
                 if (xFirstGid != null)
-                    FirstGid = (int)xFirstGid;
+                    FirstGid = (int) xFirstGid;
 
-                Name = (string)xTileset.Attribute("name");
-                TileWidth = (int)xTileset.Attribute("tilewidth");
-                TileHeight = (int)xTileset.Attribute("tileheight");
-                Spacing = (int?)xTileset.Attribute("spacing") ?? 0;
-                Margin = (int?)xTileset.Attribute("margin") ?? 0;
-
+                Name = (string) xTileset.Attribute("name");
+                TileWidth = (int) xTileset.Attribute("tilewidth");
+                TileHeight = (int) xTileset.Attribute("tileheight");
+                Spacing = (int?) xTileset.Attribute("spacing") ?? 0;
+                Margin = (int?) xTileset.Attribute("margin") ?? 0;
+                Columns = (int?) xTileset.Attribute("columns");
+                TileCount = (int?) xTileset.Attribute("tilecount");
                 TileOffset = new TmxTileOffset(xTileset.Element("tileoffset"));
                 Image = new TmxImage(xTileset.Element("image"), tmxDir);
 
@@ -78,11 +86,10 @@ namespace TiledSharp
                         Terrains.Add(new TmxTerrain(e));
                 }
 
-                Tiles = new List<TmxTilesetTile>();
-                foreach (var xTile in xTileset.Elements("tile"))
-                {
+                Tiles = new Dictionary<int, TmxTilesetTile>();
+                foreach (var xTile in xTileset.Elements("tile")) {
                     var tile = new TmxTilesetTile(xTile, Terrains, tmxDir);
-                    Tiles.Add(tile);
+                    Tiles[tile.Id] = tile;
                 }
 
                 Properties = new PropertyDict(xTileset.Element("properties"));
@@ -125,11 +132,14 @@ namespace TiledSharp
     public class TmxTilesetTile
     {
         public int Id {get; private set;}
-        public List<TmxTerrain> TerrainEdges {get; private set;}
+        public Collection<TmxTerrain> TerrainEdges {get; private set;}
         public double Probability {get; private set;}
+        public string Type { get; private set; }
 
-        public TmxImage Image {get; private set;}
         public PropertyDict Properties {get; private set;}
+        public TmxImage Image {get; private set;}
+        public TmxList<TmxObjectGroup> ObjectGroups {get; private set;}
+        public Collection<TmxAnimationFrame> AnimationFrames {get; private set;}
 
         // Human-readable aliases to the Terrain markers
         public TmxTerrain TopLeft {
@@ -152,7 +162,7 @@ namespace TiledSharp
         {
             Id = (int)xTile.Attribute("id");
 
-            TerrainEdges = new List<TmxTerrain>(4);
+            TerrainEdges = new Collection<TmxTerrain>();
 
             int result;
             TmxTerrain edge;
@@ -165,11 +175,37 @@ namespace TiledSharp
                 else
                     edge = null;
                 TerrainEdges.Add(edge);
+
+                // TODO: Assert that TerrainEdges length is 4
             }
 
             Probability = (double?)xTile.Attribute("probability") ?? 1.0;
+            Type = (string)xTile.Attribute("type");
             Image = new TmxImage(xTile.Element("image"), tmxDir);
+
+            ObjectGroups = new TmxList<TmxObjectGroup>();
+            foreach (var e in xTile.Elements("objectgroup"))
+                ObjectGroups.Add(new TmxObjectGroup(e));
+
+            AnimationFrames = new Collection<TmxAnimationFrame>();
+            if (xTile.Element("animation") != null) {
+                foreach (var e in xTile.Element("animation").Elements("frame"))
+                    AnimationFrames.Add(new TmxAnimationFrame(e));
+            }
+
             Properties = new PropertyDict(xTile.Element("properties"));
+        }
+    }
+
+    public class TmxAnimationFrame
+    {
+        public int Id {get; private set;}
+        public int Duration {get; private set;}
+
+        public TmxAnimationFrame(XElement xFrame)
+        {
+            Id = (int)xFrame.Attribute("tileid");
+            Duration = (int)xFrame.Attribute("duration");
         }
     }
 }

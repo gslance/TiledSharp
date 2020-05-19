@@ -9,6 +9,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace TiledSharp
@@ -17,12 +18,20 @@ namespace TiledSharp
     {
         public string TmxDirectory {get; private set;}
 
+        public TmxDocument()
+        {
+            TmxDirectory = string.Empty;
+        }
+
         protected XDocument ReadXml(string filepath)
         {
             XDocument xDoc;
 
-            var asm = Assembly.GetExecutingAssembly();
-            var manifest = asm.GetManifestResourceNames();
+            var asm = Assembly.GetEntryAssembly();
+            var manifest = new string[0];
+
+            if (asm != null)
+                manifest = asm.GetManifestResourceNames();
 
             var fileResPath = filepath.Replace(
                     Path.DirectorySeparatorChar.ToString(), ".");
@@ -32,12 +41,17 @@ namespace TiledSharp
             // Otherwise, assume filepath is an explicit path
             if (fileRes != null)
             {
-                Stream xmlStream = asm.GetManifestResourceStream(fileRes);
-                xDoc = XDocument.Load(xmlStream);
-                TmxDirectory = "";
+                using (Stream xmlStream = asm.GetManifestResourceStream(fileRes)) {
+                    using (XmlReader reader = XmlReader.Create(xmlStream)) {
+                        xDoc = XDocument.Load(reader);
+                    }
+                }
+                TmxDirectory = String.Empty;
             }
             else
             {
+                // TODO: Check for existence of file
+
                 xDoc = XDocument.Load(filepath);
                 TmxDirectory = Path.GetDirectoryName(filepath);
             }
@@ -53,50 +67,59 @@ namespace TiledSharp
 
     public class TmxList<T> : KeyedCollection<string, T> where T : ITmxElement
     {
-        public static Dictionary<Tuple<TmxList<T>, string>, int> nameCount
-            = new Dictionary<Tuple<TmxList<T>, string>, int>();
+        private Dictionary<string, int> nameCount
+            = new Dictionary<string, int>();
 
         public new void Add(T t)
         {
+            var tName = t.Name;
+
             // Rename duplicate entries by appending a number
-            var key = Tuple.Create<TmxList<T>, string> (this, t.Name);
-            if (this.Contains(t.Name))
-                nameCount[key] += 1;
+            if (this.Contains(tName))
+                nameCount[tName] += 1;
             else
-                nameCount.Add(key, 0);
+                nameCount.Add(tName, 0);
             base.Add(t);
         }
 
-        protected override string GetKeyForItem(T t)
+        protected override string GetKeyForItem(T item)
         {
-            var key = Tuple.Create<TmxList<T>, string> (this, t.Name);
-            var count = nameCount[key];
+            var name = item.Name;
+            var count = nameCount[name];
 
             var dupes = 0;
-            var itemKey = t.Name;
 
             // For duplicate keys, append a counter
             // For pathological cases, insert underscores to ensure uniqueness
-            while (Contains(itemKey)) {
-                itemKey = t.Name + String.Concat(Enumerable.Repeat("_", dupes))
-                            + count;
+            while (Contains(name)) {
+                name = name + String.Concat(Enumerable.Repeat("_", dupes))
+                            + count.ToString();
                 dupes++;
             }
 
-            return itemKey;
+            return name;
         }
     }
 
+    [Serializable]
     public class PropertyDict : Dictionary<string, string>
     {
-        public PropertyDict(XElement xmlProp)
+        public PropertyDict(XContainer xmlProp)
         {
             if (xmlProp == null) return;
 
             foreach (var p in xmlProp.Elements("property"))
             {
-                var pname = p.Attribute("name").Value;
-                var pval = p.Attribute("value").Value;
+                string pname, pval;
+
+                pname = p.Attribute("name").Value;
+                try {
+                    pval = p.Attribute("value").Value;
+                } catch (System.NullReferenceException) {
+                    // Fallback to element value if no "value"
+                    pval = p.Value;
+                }
+
                 Add(pname, pval);
             }
         }
@@ -104,8 +127,8 @@ namespace TiledSharp
 
     public class TmxImage
     {
-        public string Format {get; private set;}
         public string Source {get; private set;}
+        public string Format {get; private set;}
         public Stream Data {get; private set;}
         public TmxColor Trans {get; private set;}
         public int? Width {get; private set;}
@@ -135,9 +158,9 @@ namespace TiledSharp
 
     public class TmxColor
     {
-        public int R;
-        public int G;
-        public int B;
+        public int R {get; private set;}
+        public int G {get; private set;}
+        public int B {get; private set;}
 
         public TmxColor(XAttribute xColor)
         {
@@ -165,11 +188,21 @@ namespace TiledSharp
             Data = new MemoryStream(rawData, false);
 
             var compression = (string)xData.Attribute("compression");
-            if (compression == "gzip")
-                Data = new GZipStream(Data, CompressionMode.Decompress, false);
-            else if (compression == "zlib")
-                Data = new Ionic.Zlib.ZlibStream(Data,
-                        Ionic.Zlib.CompressionMode.Decompress, false);
+            if (compression == "gzip") {
+                Data = new GZipStream (Data, CompressionMode.Decompress);
+            }
+            else if (compression == "zlib") {
+                // Strip 2-byte header and 4-byte checksum
+                // TODO: Validate header here
+                var bodyLength = rawData.Length - 6;
+                byte[] bodyData = new byte[bodyLength];
+                Array.Copy (rawData, 2, bodyData, 0, bodyLength);
+
+                var bodyStream = new MemoryStream (bodyData, false);
+                Data = new DeflateStream (bodyStream, CompressionMode.Decompress);
+
+                // TODO: Validate checksum?
+            }
             else if (compression != null)
                 throw new Exception("TmxBase64Data: Unknown compression.");
         }

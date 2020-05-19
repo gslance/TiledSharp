@@ -2,32 +2,39 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 using System;
-using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Xml.Linq;
 using System.IO;
 using System.IO.Compression;
 
 namespace TiledSharp
 {
-    public class TmxLayer : ITmxElement
+    public class TmxLayer : ITmxLayer
     {
         public string Name {get; private set;}
-        public double Opacity {get; private set;}
-        public bool Visible {get; private set;}
 
-        public List<TmxLayerTile> Tiles {get; private set;}
+        // TODO: Legacy (Tiled Java) attributes (x, y, width, height)
+
+        public double Opacity {get; private set;}
+        public bool Visible {get; private set; }
+        public double? OffsetX {get; private set;}
+        public double? OffsetY {get; private set;}
+
+        public Collection<TmxLayerTile> Tiles {get; private set;}
         public PropertyDict Properties {get; private set;}
 
         public TmxLayer(XElement xLayer, int width, int height)
         {
-            Name = (string)xLayer.Attribute("name");
-            Opacity = (double?)xLayer.Attribute("opacity") ?? 1.0;
-            Visible = (bool?)xLayer.Attribute("visible") ?? true;
+            Name = (string) xLayer.Attribute("name");
+            Opacity = (double?) xLayer.Attribute("opacity") ?? 1.0;
+            Visible = (bool?) xLayer.Attribute("visible") ?? true;
+            OffsetX = (double?) xLayer.Attribute("offsetx") ?? 0.0;
+            OffsetY = (double?) xLayer.Attribute("offsety") ?? 0.0;
 
             var xData = xLayer.Element("data");
             var encoding = (string)xData.Attribute("encoding");
 
-            Tiles = new List<TmxLayerTile>();
+            Tiles = new Collection<TmxLayerTile>();
             if (encoding == "base64")
             {
                 var decodedStream = new TmxBase64Data(xData);
@@ -56,9 +63,11 @@ namespace TiledSharp
                 int k = 0;
                 foreach (var e in xData.Elements("tile"))
                 {
-                    var gid = (uint)e.Attribute("gid");
+                    var gid = (uint?)e.Attribute("gid") ?? 0;
+
                     var x = k % width;
                     var y = k / width;
+                    
                     Tiles.Add(new TmxLayerTile(gid, x, y));
                     k++;
                 }
@@ -82,7 +91,6 @@ namespace TiledSharp
         public bool HorizontalFlip {get; private set;}
         public bool VerticalFlip {get; private set;}
         public bool DiagonalFlip {get; private set;}
-
         public TmxLayerTile(uint id, int x, int y)
         {
             var rawGid = id;

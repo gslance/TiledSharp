@@ -2,6 +2,14 @@ TiledSharp
 ==========
 A .NET C# library for importing Tiled TMX tile maps
 
+*Note to current users*
+
+I am considering some minor changes to the TiledSharp API.  `See the GitHub
+issue for more information`_.
+
+.. _`See the GitHub issue for more information`:
+   https://github.com/marshallward/TiledSharp/issues/29
+
 
 About TiledSharp
 ----------------
@@ -55,13 +63,27 @@ Although TiledSharp can manage elements with the same name, it is not
 recommended. For more information, see the TmxList_ specification.
 
 
+Examples
+--------
+
+- Github user Temeez_ has provided a simple example of a MonoGame project using
+  TiledSharp:
+
+  https://github.com/Temeez/TiledSharp-MonoGame-Example
+
+- Tesserae_ was an attempt to create a general TMX renderer for MonoGame.  I
+  still don't feel that it's ready for general use, but it may help others to
+  develop their own renderers.
+
+  An example game using Tesserae is available here:
+
+  https://github.com/marshallward/DemoGame
+
+
 Notes
 -----
 TiledSharp parses XML files produced by Tiled_, an open-source (GPL) tile map
 editor developed and maintained by Thorbjørn Lindeijer.
-
-Zlib decompression in TiledSharp uses the Zlib implementation of DotNetZip_
-v1.9.1.8.
 
 
 Licensing
@@ -72,9 +94,6 @@ any restrictions on your own code. But any changes to TiledSharp must be
 documented explicitly.
 
 Attribution is not necessary, but always appreciated.
-
-Support code from DotNetZip_ is distributed under the `Microsoft Public
-License`_.
 
 
 Contact
@@ -92,6 +111,8 @@ Marshall Ward <tiledsharp@marshallward.org>
     https://github.com/marshallward/TiledSharp/wiki/TiledSharp-Data-Hierarchy
 .. _TmxList: https://github.com/marshallward/TiledSharp/wiki/TmxList
 .. _DotNetZip: http://dotnetzip.codeplex.com
+.. _Temeez: https://github.com/Temeez
+.. _Tesserae: https://github.com/marshallward/Tesserae
 .. _Apache 2.0 License:
     http://www.apache.org/licenses/LICENSE-2.0.txt
 .. _Microsoft Public License:
